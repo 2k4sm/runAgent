@@ -26,3 +26,22 @@ Health check: `GET http://localhost:8000/api/v1/health`
 uv run ruff check src/
 uv run ty check
 ```
+
+## Deploy
+
+The repo ships a `Dockerfile` and `docker-compose.yml`.
+
+Local / any Docker host:
+
+```bash
+docker compose up --build   # serves on :8000, reads .env
+```
+
+Dokploy:
+
+1. Create a **Compose** application pointing at this repository.
+2. Set the environment variables (see `.env.example`) in the Dokploy UI.
+3. Attach a domain to the `backend` service on port `8000`.
+
+Run the migrations in `supabase/migrations/` once against your Supabase
+project before the first deploy.
