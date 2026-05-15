@@ -1,0 +1,53 @@
+"""Conversation CRUD routes."""
+
+from fastapi import APIRouter, Depends
+
+from run_agent.middlewares.auth import get_current_user
+from run_agent.schemas.auth import CurrentUser
+from run_agent.schemas.chat import MessageOut
+from run_agent.schemas.conversation import ConversationCreate, ConversationOut
+from run_agent.services.conversation_service import ConversationService
+from run_agent.services.run_service import RunService
+
+router = APIRouter()
+
+
+@router.post("", response_model=ConversationOut)
+async def create_conversation(
+    body: ConversationCreate,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await ConversationService().create(user.id, body.title)
+
+
+@router.get("", response_model=list[ConversationOut])
+async def list_conversations(
+    user: CurrentUser = Depends(get_current_user),
+) -> list[dict]:
+    return await ConversationService().list_for_user(user.id)
+
+
+@router.get("/{conversation_id}", response_model=ConversationOut)
+async def get_conversation(
+    conversation_id: str,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    return await ConversationService().get(conversation_id, user.id)
+
+
+@router.get("/{conversation_id}/messages", response_model=list[MessageOut])
+async def list_messages(
+    conversation_id: str,
+    user: CurrentUser = Depends(get_current_user),
+) -> list[dict]:
+    await ConversationService().get(conversation_id, user.id)  # ownership check
+    return await RunService().message_repo.list_for_conversation(conversation_id)
+
+
+@router.delete("/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict[str, str]:
+    await ConversationService().delete(conversation_id, user.id)
+    return {"status": "deleted"}

@@ -1,0 +1,54 @@
+[project]
+name = "run-agent"
+version = "0.1.0"
+description = "Multi-agent chatbot platform for SMEs"
+requires-python = ">=3.12"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
+    "sse-starlette>=2.1.0",
+
+    # LLM
+    "litellm>=1.50.0",
+
+    # Supabase (database + storage)
+    "supabase>=2.10.0",
+    "python-jose[cryptography]>=3.3.0",
+
+    # Agent tools — search
+    "tavily-python>=0.5.0",
+    "httpx>=0.27.0",
+
+    # Agent tools — document creation
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=1.0.0",
+    "reportlab>=4.2.0",
+    "pypdf>=5.0.0",
+
+    # Utilities
+    "pydantic-settings>=2.6.0",
+    "structlog>=24.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "ty>=0.0.1a10",
+    "pre-commit>=4.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/run_agent"]
+
+[tool.ty.rules]
+# Tool subclasses intentionally declare named parameters matching their JSON
+# schema; the registry always invokes them by keyword. The widened base
+# signature (**kwargs) makes this a deliberate, safe override.
+invalid-method-override = "ignore"

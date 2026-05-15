@@ -1,0 +1,39 @@
+repos:
+  - repo: local
+    hooks:
+      # --- Commit hooks (fast) ---
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      - id: ty-check
+        name: ty type check
+        entry: uv run ty check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      # --- Push hooks (thorough) ---
+      - id: ruff-full
+        name: ruff full check
+        entry: uv run ruff check src/
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: ty-full
+        name: ty full check
+        entry: uv run ty check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

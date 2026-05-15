@@ -1,0 +1,15 @@
+src = ["src"]
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "A", "COM", "C4", "PT", "RET", "SIM", "ARG"]
+# B008: Depends()/File() in argument defaults is the standard FastAPI pattern.
+ignore = ["ANN401", "COM812", "B008"]
+
+[lint.isort]
+known-first-party = ["run_agent"]
+
+[lint.per-file-ignores]
+# Prompt strings are intentionally long, verbatim text.
+"src/run_agent/prompts/*" = ["E501"]
