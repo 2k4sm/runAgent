@@ -12,6 +12,7 @@ class ChatMessageIn(BaseModel):
     content: str
     conversation_id: str
     attachment_ids: list[str] = []
+    reasoning: bool = False
 
 
 class RunOut(BaseModel):

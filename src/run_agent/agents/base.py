@@ -85,6 +85,7 @@ class BaseAgent(ABC):
             *messages,
         ]
         tools = self.get_tools()
+        reasoning_effort = (context or {}).get("reasoning_effort")
 
         for _ in range(self.max_iterations):
             # Stream the call: emit text deltas live, accumulate raw chunks so
@@ -94,12 +95,22 @@ class BaseAgent(ABC):
                 model=self.model,
                 messages=conversation,
                 tools=tools or None,
+                reasoning_effort=reasoning_effort,
             ):
                 chunks.append(chunk)
                 if not chunk.choices:  # usage-only final chunk
                     continue
                 delta = chunk.choices[0].delta
-                if delta and delta.content:
+                if not delta:
+                    continue
+                # Reasoning tokens stream alongside content; LiteLLM
+                # standardizes them on `delta.reasoning_content`.
+                reasoning = getattr(delta, "reasoning_content", None)
+                if reasoning:
+                    yield SSEEvent(
+                        type="reasoning", agent=self.name, content=reasoning
+                    )
+                if delta.content:
                     yield SSEEvent(
                         type="chunk", agent=self.name, content=delta.content
                     )

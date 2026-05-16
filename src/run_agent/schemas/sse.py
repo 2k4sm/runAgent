@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 SSEEventType = Literal[
     "chunk",
+    "reasoning",
     "thought",
     "tool_call",
     "tool_result",

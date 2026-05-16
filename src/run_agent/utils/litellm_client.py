@@ -30,6 +30,7 @@ async def stream_llm(
     tool_choice: Any = "auto",
     temperature: float = 0.7,
     max_tokens: int = 4096,
+    reasoning_effort: str | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Streaming LLM call used by the ReAct loop.
 
@@ -48,6 +49,10 @@ async def stream_llm(
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = tool_choice
+    if reasoning_effort:
+        # Standardized by LiteLLM; dropped automatically for providers that
+        # do not support it (litellm.drop_params is enabled above).
+        kwargs["reasoning_effort"] = reasoning_effort
 
     response = await acompletion(**kwargs)
 

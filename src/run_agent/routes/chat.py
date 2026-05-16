@@ -52,6 +52,7 @@ async def send_message(
             conversation_id=body.conversation_id,
             content=body.content,
             attachments=attachment_records,
+            reasoning=body.reasoning,
         ):
             yield StreamService.format(event)
 

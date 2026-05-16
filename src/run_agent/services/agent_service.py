@@ -113,6 +113,7 @@ class AgentService:
         conversation_id: str,
         content: str,
         attachments: list[dict[str, Any]] | None = None,
+        reasoning: bool = False,
     ) -> AsyncGenerator[SSEEvent, None]:
         """Run the supervisor pipeline, streaming SSE events and persisting state.
 
@@ -129,6 +130,10 @@ class AgentService:
             "conversation_id": conversation_id,
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
+        # When enabled, every agent passes this effort to the LLM call and
+        # streams the model's reasoning tokens back as `reasoning` events.
+        if reasoning:
+            context["reasoning_effort"] = "medium"
 
         # Read prior turns BEFORE persisting this run's timeline, otherwise the
         # current message would appear twice in the LLM context.
@@ -148,6 +153,7 @@ class AgentService:
         messages = [*history, {"role": "user", "content": message_content}]
 
         assistant_chunks: list[str] = []
+        reasoning_chunks: list[str] = []
         final_agent = constants.AGENT_SUPERVISOR
         persisted = False
 
@@ -163,9 +169,25 @@ class AgentService:
                     final_agent = event.agent
                     yield event
                     continue
+                if event.type == "reasoning" and event.content:
+                    # Reasoning streams token-by-token too — forward live but
+                    # keep deltas out of the timeline; one merged `reasoning`
+                    # entry is appended below for cheap, faithful replay.
+                    reasoning_chunks.append(event.content)
+                    final_agent = event.agent
+                    yield event
+                    continue
                 timeline.append(_event_entry(event))
                 yield event
 
+            reasoning_text = "".join(reasoning_chunks)
+            if reasoning_text:
+                timeline.append(_event_entry(SSEEvent(
+                    type="reasoning",
+                    agent=final_agent,
+                    content=reasoning_text,
+                    timestamp=_now(),
+                )))
             answer = "".join(assistant_chunks)
             if answer:
                 timeline.append({
