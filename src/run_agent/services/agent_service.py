@@ -3,6 +3,7 @@
 import base64
 import io
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -74,6 +75,33 @@ def _extract_pdf_text(data: bytes) -> str:
     return "\n".join(pages)[:8000]
 
 
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _attachment_entry(asset: dict[str, Any]) -> dict[str, Any]:
+    """Trim an asset dict to the fields the UI needs to render a chip."""
+    return {
+        "id": asset["id"],
+        "file_name": asset["file_name"],
+        "file_type": asset["file_type"],
+        "file_size": asset.get("file_size", 0),
+        "file_url": asset.get("file_url", ""),
+    }
+
+
+def _event_entry(event: SSEEvent) -> dict[str, Any]:
+    """Convert an SSE event into an ordered timeline entry."""
+    return {
+        "kind": "event",
+        "type": event.type,
+        "agent": event.agent,
+        "content": event.content,
+        "metadata": event.metadata,
+        "ts": event.timestamp or _now(),
+    }
+
+
 class AgentService:
     def __init__(self) -> None:
         self.run_service = RunService()
@@ -86,7 +114,12 @@ class AgentService:
         content: str,
         attachments: list[dict[str, Any]] | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
-        """Run the supervisor pipeline, streaming SSE events and persisting state."""
+        """Run the supervisor pipeline, streaming SSE events and persisting state.
+
+        Every yielded event and the bracketing user/assistant messages are
+        accumulated into an ordered `timeline`, persisted onto the run's `data`
+        column once the run ends — on success, failure, or early client abort.
+        """
         attachments = attachments or []
         # `usage` is filled in by each agent with exact provider-reported token
         # counts as the run progresses (see BaseAgent._accumulate_usage).
@@ -97,23 +130,26 @@ class AgentService:
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         }
 
-        # Read prior turns BEFORE persisting the new message, otherwise the
+        # Read prior turns BEFORE persisting this run's timeline, otherwise the
         # current message would appear twice in the LLM context.
         history = await self.run_service.history(conversation_id)
 
-        await self.run_service.add_message(
-            conversation_id=conversation_id,
-            user_id=user_id,
-            role=constants.ROLE_USER,
-            content=content,
-            metadata={"attachment_count": len(attachments)},
-        )
+        # The timeline opens with the user message entry.
+        timeline: list[dict[str, Any]] = [{
+            "kind": "message",
+            "role": constants.ROLE_USER,
+            "agent": None,
+            "content": content,
+            "attachments": [_attachment_entry(a) for a in attachments],
+            "ts": _now(),
+        }]
 
         message_content = await build_multimodal_content(content, attachments)
         messages = [*history, {"role": "user", "content": message_content}]
 
         assistant_chunks: list[str] = []
         final_agent = constants.AGENT_SUPERVISOR
+        persisted = False
 
         try:
             supervisor = SupervisorAgent()
@@ -121,31 +157,58 @@ class AgentService:
                 if event.type == "chunk" and event.content:
                     assistant_chunks.append(event.content)
                     final_agent = event.agent
+                timeline.append(_event_entry(event))
                 yield event
 
             answer = "".join(assistant_chunks)
             if answer:
-                await self.run_service.add_message(
-                    conversation_id=conversation_id,
-                    user_id=user_id,
-                    role=constants.ROLE_ASSISTANT,
-                    content=answer,
-                    run_id=run_id,
-                    agent=final_agent,
-                )
+                timeline.append({
+                    "kind": "message",
+                    "role": constants.ROLE_ASSISTANT,
+                    "agent": final_agent,
+                    "content": answer,
+                    "ts": _now(),
+                })
             usage = context["usage"]
             await self.run_service.complete_run(
                 run_id,
+                data=timeline,
                 prompt_tokens=usage["prompt_tokens"],
                 completion_tokens=usage["completion_tokens"],
             )
+            persisted = True
 
         except Exception as exc:  # noqa: BLE001
             logger.error("agent_execution_failed", run_id=run_id, error=str(exc))
-            await self.run_service.fail_run(run_id, str(exc))
-            yield SSEEvent(
-                type="error",
-                agent=final_agent,
-                content="The agent encountered an error and could not complete.",
-            )
-            yield SSEEvent(type="done", agent=final_agent)
+            for event in (
+                SSEEvent(
+                    type="error",
+                    agent=final_agent,
+                    content="The agent encountered an error and could not complete.",
+                ),
+                SSEEvent(type="done", agent=final_agent),
+            ):
+                event.timestamp = _now()
+                timeline.append(_event_entry(event))
+                yield event
+            await self.run_service.fail_run(run_id, str(exc), data=timeline)
+            persisted = True
+
+        finally:
+            # The generator was closed early (client abort) before either
+            # terminal branch ran — persist whatever streamed so the run is
+            # never left stuck in `running` with an empty timeline.
+            if not persisted:
+                timeline.append(_event_entry(
+                    SSEEvent(type="status", agent=final_agent,
+                             content="aborted", timestamp=_now()),
+                ))
+                timeline.append(_event_entry(
+                    SSEEvent(type="done", agent=final_agent, timestamp=_now()),
+                ))
+                # Never let a persistence failure mask the GeneratorExit that
+                # brought us here — that would surface as a RuntimeError.
+                try:
+                    await self.run_service.fail_run(run_id, "aborted", data=timeline)
+                except Exception as exc:  # noqa: BLE001
+                    logger.error("abort_persist_failed", run_id=run_id, error=str(exc))

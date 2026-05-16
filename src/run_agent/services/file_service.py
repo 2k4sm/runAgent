@@ -13,9 +13,12 @@ from run_agent.utils import storage_client
 from run_agent.utils.id_gen import new_id
 
 
-def _build_path(user_id: str, conversation_id: str, file_name: str) -> str:
-    """Object path: <user_id>/<conversation_id>/<uuid>_<file_name>."""
-    return f"{user_id}/{conversation_id}/{new_id()}_{file_name}"
+def _build_path(user_id: str, conversation_id: str | None, file_name: str) -> str:
+    """Object path: <user_id>/<conversation_id>/<uuid>_<file_name>.
+
+    Files uploaded before a conversation exists land under `unassigned`.
+    """
+    return f"{user_id}/{conversation_id or 'unassigned'}/{new_id()}_{file_name}"
 
 
 def _with_url(asset: dict[str, Any]) -> dict[str, Any]:
@@ -31,7 +34,7 @@ class FileService:
         self,
         *,
         user_id: str,
-        conversation_id: str,
+        conversation_id: str | None,
         run_id: str | None,
         source: str,
         file_name: str,
@@ -55,7 +58,7 @@ class FileService:
     async def upload_attachment(
         self,
         user_id: str,
-        conversation_id: str,
+        conversation_id: str | None,
         file_name: str,
         content: bytes,
         mime_type: str,
