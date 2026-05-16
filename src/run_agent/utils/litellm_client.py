@@ -1,8 +1,10 @@
 """LiteLLM completion wrappers.
 
-The ReAct loop uses the *non-streaming* `call_llm` for tool-call detection
-(streaming tool calls are unreliable on some Gemini models) and `stream_llm`
-only for final text responses.
+The ReAct loop drives a single *streaming* call (`stream_llm`) per iteration:
+text deltas are emitted to the client as they arrive, and the caller rebuilds
+the full response — including `tool_calls` and `usage` — from the accumulated
+chunks via `litellm.stream_chunk_builder`. Rebuilding makes tool-call detection
+reliable even on providers where raw streamed tool-call deltas are flaky.
 """
 
 import os
@@ -21,49 +23,33 @@ os.environ.setdefault("GEMINI_API_KEY", settings.gemini_api_key)
 litellm.drop_params = True
 
 
-async def call_llm(
+async def stream_llm(
     model: str,
     messages: list[dict],
     tools: list[dict] | None = None,
     tool_choice: Any = "auto",
     temperature: float = 0.7,
     max_tokens: int = 4096,
-) -> Any:
-    """Non-streaming LLM call (used for tool-use detection in the ReAct loop).
+) -> AsyncGenerator[Any, None]:
+    """Streaming LLM call used by the ReAct loop.
 
-    Returns the full LiteLLM response so callers can read both
-    `response.choices[0].message` and `response.usage` (exact provider-reported
-    token counts).
+    Yields raw LiteLLM chunks. The caller accumulates them and uses
+    `litellm.stream_chunk_builder(chunks, messages=...)` to rebuild the full
+    response (`tool_calls` + provider-reported `usage`).
     """
     kwargs: dict[str, Any] = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
     }
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = tool_choice
 
-    return await acompletion(**kwargs)
-
-
-async def stream_llm(
-    model: str,
-    messages: list[dict],
-    temperature: float = 0.7,
-    max_tokens: int = 4096,
-) -> AsyncGenerator[str, None]:
-    """Streaming LLM call (used for final text responses)."""
-    response = await acompletion(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        stream=True,
-    )
+    response = await acompletion(**kwargs)
 
     async for chunk in response:
-        delta = chunk.choices[0].delta
-        if delta and delta.content:
-            yield delta.content
+        yield chunk

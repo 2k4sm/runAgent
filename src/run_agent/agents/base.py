@@ -1,9 +1,10 @@
 """BaseAgent — the shared ReAct loop.
 
 Each agent runs Thought -> Action -> Observation until it produces a final
-answer. Tool-call detection uses a *non-streaming* LLM call (reliable across
-providers); the final text answer comes from that same call's content, so
-there is no second round-trip.
+answer. Every iteration drives a single *streaming* LLM call: text deltas are
+emitted to the client as they arrive, and the full response — including
+`tool_calls` and `usage` — is rebuilt from the accumulated chunks via
+`litellm.stream_chunk_builder`, so tool-call detection stays reliable.
 """
 
 import json
@@ -11,11 +12,13 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import litellm
+
 from run_agent.config.logging import get_logger
 from run_agent.config.settings import settings
 from run_agent.schemas.sse import SSEEvent
 from run_agent.tools.registry import ToolRegistry
-from run_agent.utils.litellm_client import call_llm
+from run_agent.utils.litellm_client import stream_llm
 
 logger = get_logger(__name__)
 
@@ -84,20 +87,34 @@ class BaseAgent(ABC):
         tools = self.get_tools()
 
         for _ in range(self.max_iterations):
-            response = await call_llm(
+            # Stream the call: emit text deltas live, accumulate raw chunks so
+            # the full response (tool_calls + usage) can be rebuilt afterward.
+            chunks: list[Any] = []
+            async for chunk in stream_llm(
                 model=self.model,
                 messages=conversation,
                 tools=tools or None,
+            ):
+                chunks.append(chunk)
+                if not chunk.choices:  # usage-only final chunk
+                    continue
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    yield SSEEvent(
+                        type="chunk", agent=self.name, content=delta.content
+                    )
+
+            response: Any = litellm.stream_chunk_builder(
+                chunks, messages=conversation
             )
+            if response is None:
+                raise RuntimeError("LLM stream produced no chunks")
             _accumulate_usage(context, response)
             message = response.choices[0].message
 
             tool_calls = getattr(message, "tool_calls", None)
             if not tool_calls:
-                # Final answer — emit the content produced by this call.
-                content = message.content or ""
-                if content:
-                    yield SSEEvent(type="chunk", agent=self.name, content=content)
+                # Final answer — text was already streamed above.
                 yield SSEEvent(
                     type="done",
                     agent=self.name,

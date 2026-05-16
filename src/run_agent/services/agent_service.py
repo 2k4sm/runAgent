@@ -155,8 +155,14 @@ class AgentService:
             supervisor = SupervisorAgent()
             async for event in supervisor.run(messages, context):
                 if event.type == "chunk" and event.content:
+                    # The loop now streams text token-by-token; keep the
+                    # per-token deltas out of the persisted timeline (the
+                    # assembled assistant message entry below captures the
+                    # full text) and just forward them to the client.
                     assistant_chunks.append(event.content)
                     final_agent = event.agent
+                    yield event
+                    continue
                 timeline.append(_event_entry(event))
                 yield event
 
