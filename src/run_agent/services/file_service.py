@@ -58,7 +58,6 @@ class FileService:
     async def upload_attachment(
         self,
         user_id: str,
-        conversation_id: str | None,
         file_name: str,
         content: bytes,
         mime_type: str,
@@ -66,7 +65,7 @@ class FileService:
         """Upload a user attachment and create an asset record."""
         return await self._create(
             user_id=user_id,
-            conversation_id=conversation_id,
+            conversation_id=None,
             run_id=None,
             source=constants.SOURCE_UPLOAD,
             file_name=file_name,
