@@ -205,6 +205,7 @@ class AgentService:
                 completion_tokens=usage["completion_tokens"],
             )
             persisted = True
+            await self._log_usage(run_id, conversation_id, usage)
 
         except Exception as exc:  # noqa: BLE001
             logger.error("agent_execution_failed", run_id=run_id, error=str(exc))
@@ -221,6 +222,7 @@ class AgentService:
                 yield event
             await self.run_service.fail_run(run_id, str(exc), data=timeline)
             persisted = True
+            await self._log_usage(run_id, conversation_id, context["usage"])
 
         finally:
             # The generator was closed early (client abort) before either
@@ -240,3 +242,31 @@ class AgentService:
                     await self.run_service.fail_run(run_id, "aborted", data=timeline)
                 except Exception as exc:  # noqa: BLE001
                     logger.error("abort_persist_failed", run_id=run_id, error=str(exc))
+
+    async def _log_usage(
+        self,
+        run_id: str,
+        conversation_id: str,
+        usage: dict[str, int],
+    ) -> None:
+        """Log this turn's token usage and the conversation's running aggregate."""
+        logger.info(
+            "turn_tokens",
+            run_id=run_id,
+            conversation_id=conversation_id,
+            prompt_tokens=usage.get("prompt_tokens", 0),
+            completion_tokens=usage.get("completion_tokens", 0),
+            total_tokens=usage.get("total_tokens", 0),
+        )
+        try:
+            totals = await self.run_service.token_totals(conversation_id)
+            logger.info(
+                "conversation_tokens",
+                conversation_id=conversation_id,
+                turns=totals["runs"],
+                prompt_tokens=totals["prompt_tokens"],
+                completion_tokens=totals["completion_tokens"],
+                total_tokens=totals["total_tokens"],
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("conversation_tokens_failed", error=str(exc))

@@ -57,6 +57,18 @@ class RunService:
             "completed_at": datetime.now(UTC).isoformat(),
         })
 
+    async def token_totals(self, conversation_id: str) -> dict[str, int]:
+        """Sum token usage across every run in the conversation."""
+        runs = await self.run_repo.list_for_conversation(conversation_id)
+        prompt = sum(r.get("prompt_tokens") or 0 for r in runs)
+        completion = sum(r.get("completion_tokens") or 0 for r in runs)
+        return {
+            "runs": len(runs),
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "total_tokens": prompt + completion,
+        }
+
     async def history(self, conversation_id: str) -> list[dict[str, Any]]:
         """Return prior turns as LLM chat messages, drawn from completed runs.
 

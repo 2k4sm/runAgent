@@ -28,7 +28,7 @@ async def stream_llm(
     messages: list[dict],
     tools: list[dict] | None = None,
     tool_choice: Any = "auto",
-    temperature: float = 0.7,
+    temperature: float = 1.0,
     max_tokens: int = 4096,
     reasoning_effort: str | None = None,
 ) -> AsyncGenerator[Any, None]:
