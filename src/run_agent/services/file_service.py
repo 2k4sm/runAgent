@@ -99,6 +99,21 @@ class FileService:
             raise ValueError(f"Asset {asset_id} not found")
         return _with_url(asset)
 
+    async def download_asset(
+        self, asset_id: str, user_id: str
+    ) -> tuple[bytes, dict[str, Any]]:
+        """Return an asset's raw bytes alongside its record (with `file_url`)."""
+        asset = await self.get_asset(asset_id, user_id)
+        content = storage_client.download(asset["storage_path"])
+        return content, asset
+
+    async def list_conversation_files(
+        self, conversation_id: str, user_id: str
+    ) -> list[dict[str, Any]]:
+        """Return every asset in a conversation, each with a public `file_url`."""
+        rows = await self.asset_repo.list_by_conversation(conversation_id, user_id)
+        return [_with_url(r) for r in rows]
+
     async def delete_asset(self, asset_id: str, user_id: str) -> None:
         asset = await self.asset_repo.get_by_id_and_user(asset_id, user_id)
         if not asset:

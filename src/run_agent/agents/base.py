@@ -141,29 +141,17 @@ class BaseAgent(ABC):
                 raw_args = tool_call.function.arguments
                 args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
 
-                yield SSEEvent(
-                    type="thought",
-                    agent=self.name,
-                    content=f"Using tool: {tool_name}",
-                )
-                yield SSEEvent(
-                    type="tool_call",
-                    agent=self.name,
-                    metadata={
-                        "tool_name": tool_name,
-                        "tool_args": args,
-                        "tool_call_id": tool_call.id,
-                    },
-                )
-
-                result = await self.execute_tool(tool_name, args, context)
-
-                yield SSEEvent(
-                    type="tool_result",
-                    agent=self.name,
-                    content=result,
-                    metadata={"tool_name": tool_name},
-                )
+                # `_handle_tool` yields the events for this call; the content of
+                # its final `tool_result` event is what the model sees as the
+                # tool's output. Subclasses (e.g. the supervisor) override it to
+                # run sub-agents and stream their events through here.
+                result = ""
+                async for event in self._handle_tool(
+                    tool_name, args, tool_call.id, context
+                ):
+                    if event.type == "tool_result":
+                        result = event.content or ""
+                    yield event
 
                 conversation.append({
                     "role": "tool",
@@ -175,6 +163,41 @@ class BaseAgent(ABC):
             type="error",
             agent=self.name,
             content=f"Agent exceeded max iterations ({self.max_iterations})",
+        )
+
+    async def _handle_tool(
+        self,
+        tool_name: str,
+        args: dict[str, Any],
+        tool_call_id: str,
+        context: dict[str, Any] | None,
+    ) -> AsyncGenerator[SSEEvent, None]:
+        """Handle one tool call, yielding its events.
+
+        The default runs a registered tool. The final `tool_result` event's
+        `content` becomes the tool message appended to the conversation, so an
+        override MUST yield exactly one `tool_result` event.
+        """
+        yield SSEEvent(
+            type="thought",
+            agent=self.name,
+            content=f"Using tool: {tool_name}",
+        )
+        yield SSEEvent(
+            type="tool_call",
+            agent=self.name,
+            metadata={
+                "tool_name": tool_name,
+                "tool_args": args,
+                "tool_call_id": tool_call_id,
+            },
+        )
+        result = await self.execute_tool(tool_name, args, context)
+        yield SSEEvent(
+            type="tool_result",
+            agent=self.name,
+            content=result,
+            metadata={"tool_name": tool_name},
         )
 
 

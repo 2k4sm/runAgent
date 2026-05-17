@@ -1,15 +1,11 @@
 """PDF creation tool."""
 
-import io
 from typing import Any
-
-from reportlab.lib.pagesizes import LETTER
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from run_agent.config.constants import MIME_PDF
 from run_agent.tools.base import BaseTool
 from run_agent.tools.documents._common import filename_with_ext, finalize
+from run_agent.tools.documents._render import render_pdf
 
 
 class CreatePdfTool(BaseTool):
@@ -50,22 +46,9 @@ class CreatePdfTool(BaseTool):
         _context: dict | None = None,
         **_kwargs: Any,
     ) -> str:
-        buffer = io.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=LETTER)
-        styles = getSampleStyleSheet()
-        flow: list[Any] = [Paragraph(title, styles["Title"]), Spacer(1, 12)]
-
-        for section in sections:
-            flow.append(Paragraph(section["heading"], styles["Heading2"]))
-            for paragraph in section["content"].split("\n\n"):
-                if paragraph.strip():
-                    flow.append(Paragraph(paragraph.strip(), styles["BodyText"]))
-            flow.append(Spacer(1, 12))
-
-        doc.build(flow)
         return await finalize(
             filename_with_ext(filename, "pdf"),
-            buffer.getvalue(),
+            render_pdf(title, sections),
             MIME_PDF,
             _context,
         )

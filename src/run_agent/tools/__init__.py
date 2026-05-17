@@ -7,6 +7,9 @@ from run_agent.tools.documents.create_pdf import CreatePdfTool
 from run_agent.tools.documents.create_pptx import CreatePptxTool
 from run_agent.tools.documents.create_txt import CreateTxtTool
 from run_agent.tools.documents.create_xlsx import CreateXlsxTool
+from run_agent.tools.documents.edit_document import EditDocumentTool
+from run_agent.tools.documents.list_documents import ListDocumentsTool
+from run_agent.tools.documents.read_document import ReadDocumentTool
 from run_agent.tools.registry import ToolRegistry
 from run_agent.tools.search.tavily_search import TavilySearchTool
 from run_agent.tools.search.web_fetch import WebFetchTool
@@ -28,4 +31,7 @@ def build_document_tools() -> ToolRegistry:
     registry.register(CreateCsvTool())
     registry.register(CreateMdTool())
     registry.register(CreateTxtTool())
+    registry.register(ListDocumentsTool())
+    registry.register(ReadDocumentTool())
+    registry.register(EditDocumentTool())
     return registry

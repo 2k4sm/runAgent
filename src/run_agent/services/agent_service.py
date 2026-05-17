@@ -152,51 +152,71 @@ class AgentService:
         message_content = await build_multimodal_content(content, attachments)
         messages = [*history, {"role": "user", "content": message_content}]
 
-        assistant_chunks: list[str] = []
-        reasoning_chunks: list[str] = []
         final_agent = constants.AGENT_SUPERVISOR
         persisted = False
+
+        # Text and reasoning stream token-by-token; the per-token deltas are
+        # kept out of the persisted timeline. Instead, each agent's contiguous
+        # run of text is merged into one `message` entry (and reasoning into one
+        # `reasoning` entry) and flushed into the timeline in order — so a
+        # multi-agent run (research -> document -> supervisor) replays as a
+        # faithful sequence of per-agent messages.
+        buf_agent: str | None = None
+        buf_chunks: list[str] = []
+        buf_reasoning: list[str] = []
+
+        def flush_text() -> None:
+            nonlocal buf_agent, buf_chunks, buf_reasoning
+            if buf_agent is not None:
+                reasoning = "".join(buf_reasoning)
+                if reasoning:
+                    timeline.append(_event_entry(SSEEvent(
+                        type="reasoning", agent=buf_agent,
+                        content=reasoning, timestamp=_now(),
+                    )))
+                answer = "".join(buf_chunks)
+                if answer:
+                    timeline.append({
+                        "kind": "message",
+                        "role": constants.ROLE_ASSISTANT,
+                        "agent": buf_agent,
+                        "content": answer,
+                        "ts": _now(),
+                    })
+            buf_agent, buf_chunks, buf_reasoning = None, [], []
 
         try:
             supervisor = SupervisorAgent()
             async for event in supervisor.run(messages, context):
-                if event.type == "chunk" and event.content:
-                    # The loop now streams text token-by-token; keep the
-                    # per-token deltas out of the persisted timeline (the
-                    # assembled assistant message entry below captures the
-                    # full text) and just forward them to the client.
-                    assistant_chunks.append(event.content)
+                if event.type in ("chunk", "reasoning") and event.content:
+                    if buf_agent is not None and event.agent != buf_agent:
+                        flush_text()
+                    buf_agent = event.agent
                     final_agent = event.agent
+                    if event.type == "chunk":
+                        buf_chunks.append(event.content)
+                    else:
+                        buf_reasoning.append(event.content)
                     yield event
                     continue
-                if event.type == "reasoning" and event.content:
-                    # Reasoning streams token-by-token too — forward live but
-                    # keep deltas out of the timeline; one merged `reasoning`
-                    # entry is appended below for cheap, faithful replay.
-                    reasoning_chunks.append(event.content)
-                    final_agent = event.agent
-                    yield event
-                    continue
+                # A non-text event: flush buffered text first so the merged
+                # message keeps its place in the ordered timeline.
+                flush_text()
                 timeline.append(_event_entry(event))
                 yield event
 
-            reasoning_text = "".join(reasoning_chunks)
-            if reasoning_text:
-                timeline.append(_event_entry(SSEEvent(
-                    type="reasoning",
-                    agent=final_agent,
-                    content=reasoning_text,
-                    timestamp=_now(),
-                )))
-            answer = "".join(assistant_chunks)
-            if answer:
-                timeline.append({
-                    "kind": "message",
-                    "role": constants.ROLE_ASSISTANT,
-                    "agent": final_agent,
-                    "content": answer,
-                    "ts": _now(),
-                })
+            flush_text()
+            # Attach any agent-generated files to the final assistant message
+            # so the client renders them as download chips on that message.
+            generated = context.get("generated_files")
+            if generated:
+                for entry in reversed(timeline):
+                    if (
+                        entry.get("kind") == "message"
+                        and entry.get("role") == constants.ROLE_ASSISTANT
+                    ):
+                        entry["files"] = generated
+                        break
             usage = context["usage"]
             await self.run_service.complete_run(
                 run_id,
@@ -209,6 +229,7 @@ class AgentService:
 
         except Exception as exc:  # noqa: BLE001
             logger.error("agent_execution_failed", run_id=run_id, error=str(exc))
+            flush_text()  # persist any text streamed before the failure
             for event in (
                 SSEEvent(
                     type="error",
@@ -229,6 +250,7 @@ class AgentService:
             # terminal branch ran — persist whatever streamed so the run is
             # never left stuck in `running` with an empty timeline.
             if not persisted:
+                flush_text()  # persist any text streamed before the abort
                 timeline.append(_event_entry(
                     SSEEvent(type="status", agent=final_agent,
                              content="aborted", timestamp=_now()),

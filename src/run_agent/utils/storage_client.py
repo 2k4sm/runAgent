@@ -25,6 +25,11 @@ def upload(path: str, content: bytes, mime_type: str) -> None:
     )
 
 
+def download(path: str) -> bytes:
+    """Download an object's raw bytes from the assets bucket."""
+    return bytes(_bucket().download(path))
+
+
 def public_url(path: str) -> str:
     """Return the public download URL for an object."""
     return str(_bucket().get_public_url(path))
