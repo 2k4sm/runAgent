@@ -8,7 +8,6 @@ SSEEventType = Literal[
     "chunk",
     "reasoning",
     "agent_response",
-    "thought",
     "tool_call",
     "tool_result",
     "handoff",

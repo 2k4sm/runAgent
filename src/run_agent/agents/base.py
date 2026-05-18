@@ -212,11 +212,6 @@ class BaseAgent(ABC):
         `content` becomes the tool message appended to the conversation, so an
         override MUST yield exactly one `tool_result` event.
         """
-        yield SSEEvent(
-            type="thought",
-            agent=self.name,
-            content=f"Using tool: {tool_name}",
-        )
         metadata: dict[str, Any] = {
             "tool_name": tool_name,
             "tool_args": args,
