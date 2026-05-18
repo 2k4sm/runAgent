@@ -7,6 +7,8 @@ from pydantic import BaseModel
 
 class ConversationCreate(BaseModel):
     title: str = "New conversation"
+    # Optional client-supplied id, enabling optimistic creation on the client.
+    id: str | None = None
 
 
 class ConversationOut(BaseModel):

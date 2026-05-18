@@ -17,7 +17,7 @@ async def create_conversation(
     body: ConversationCreate,
     user: CurrentUser = Depends(get_current_user),
 ) -> dict:
-    return await ConversationService().create(user.id, body.title)
+    return await ConversationService().create(user.id, body.title, body.id)
 
 
 @router.get("", response_model=list[ConversationOut])
