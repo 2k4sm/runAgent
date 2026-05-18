@@ -46,6 +46,8 @@ class MCPServerOut(BaseModel):
     enabled: bool
     status: str
     status_detail: str | None = None
+    # Live favicon URL for the server's domain (fetched on-demand by the UI).
+    icon_url: str | None = None
     tools: list[MCPToolInfo] = []
     created_at: datetime | None = None
 

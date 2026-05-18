@@ -15,6 +15,7 @@ from run_agent.services.mcp_client import MCPClient
 from run_agent.services.mcp_service import MCPServerService
 from run_agent.tools.mcp.mcp_tool import MCPTool, slugify
 from run_agent.tools.registry import ToolRegistry
+from run_agent.utils.favicon import favicon_url
 
 logger = get_logger(__name__)
 
@@ -58,8 +59,9 @@ async def open_mcp_tools(
                 )
                 tools = await client.list_tools()
                 slug = slugify(row["name"])
+                icon_url = favicon_url(row["url"])
                 for tool_def in tools:
-                    registry.register(MCPTool(client, slug, tool_def))
+                    registry.register(MCPTool(client, slug, tool_def, icon_url))
                 tool_names = ", ".join(t["name"] for t in tools) or "(none)"
                 summaries.append(f"- {row['name']}: {tool_names}")
             except Exception as exc:  # noqa: BLE001

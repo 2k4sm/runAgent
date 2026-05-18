@@ -26,6 +26,7 @@ from run_agent.services.mcp_oauth import (
     server_id_from_state,
 )
 from run_agent.utils import crypto
+from run_agent.utils.favicon import favicon_url
 
 logger = get_logger(__name__)
 
@@ -63,6 +64,7 @@ class MCPServerService:
             "enabled": row["enabled"],
             "status": row["status"],
             "status_detail": row.get("status_detail"),
+            "icon_url": favicon_url(row["url"]),
             "tools": row.get("tools_cache") or [],
             "created_at": row.get("created_at"),
         }

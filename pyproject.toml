@@ -35,6 +35,8 @@ dependencies = [
     # Utilities
     "pydantic-settings>=2.6.0",
     "structlog>=24.4.0",
+    # Registrable-domain extraction (Public Suffix List) for favicon lookup
+    "tldextract>=5.1.0",
 ]
 
 [project.optional-dependencies]

@@ -183,15 +183,18 @@ class BaseAgent(ABC):
             agent=self.name,
             content=f"Using tool: {tool_name}",
         )
-        yield SSEEvent(
-            type="tool_call",
-            agent=self.name,
-            metadata={
-                "tool_name": tool_name,
-                "tool_args": args,
-                "tool_call_id": tool_call_id,
-            },
-        )
+        metadata: dict[str, Any] = {
+            "tool_name": tool_name,
+            "tool_args": args,
+            "tool_call_id": tool_call_id,
+        }
+        # MCP tools carry their server's favicon; surface it so the UI can
+        # show the real service icon for this tool call.
+        tool = self.tool_registry.get(tool_name) if self.tool_registry else None
+        icon_url = getattr(tool, "icon_url", None)
+        if icon_url:
+            metadata["tool_icon"] = icon_url
+        yield SSEEvent(type="tool_call", agent=self.name, metadata=metadata)
         result = await self.execute_tool(tool_name, args, context)
         yield SSEEvent(
             type="tool_result",
