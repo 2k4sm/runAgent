@@ -194,13 +194,23 @@ class AgentService:
                     )))
                 answer = "".join(buf_chunks)
                 if answer:
-                    timeline.append({
-                        "kind": "message",
-                        "role": constants.ROLE_ASSISTANT,
-                        "agent": buf_agent,
-                        "content": answer,
-                        "ts": _now(),
-                    })
+                    # Worker-agent text is intermediate output — persist it as
+                    # an `agent_response` event so the client renders it inside
+                    # a collapsible block. Only the supervisor's text is the
+                    # run's final assistant message.
+                    if buf_agent == constants.AGENT_SUPERVISOR:
+                        timeline.append({
+                            "kind": "message",
+                            "role": constants.ROLE_ASSISTANT,
+                            "agent": buf_agent,
+                            "content": answer,
+                            "ts": _now(),
+                        })
+                    else:
+                        timeline.append(_event_entry(SSEEvent(
+                            type="agent_response", agent=buf_agent,
+                            content=answer, timestamp=_now(),
+                        )))
             buf_agent, buf_chunks, buf_reasoning = None, [], []
 
         try:
