@@ -13,8 +13,7 @@ class MCPHeader(BaseModel):
 
 
 class MCPServerCreate(BaseModel):
-    name: str
-    description: str | None = None
+    # Name and description are discovered from the server itself, not supplied.
     url: str
     # none | header | oauth
     auth_type: str = "none"

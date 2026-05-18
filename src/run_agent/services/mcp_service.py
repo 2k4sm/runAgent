@@ -7,6 +7,7 @@ on write, decrypts on read, and never returns secrets to callers.
 import json
 import time
 from typing import Any
+from urllib.parse import urlparse
 
 from run_agent.config import constants
 from run_agent.config.logging import get_logger
@@ -118,6 +119,8 @@ class MCPServerService:
             async with MCPClient(row["url"], headers, row["transport"]) as client:
                 tools = await client.list_tools()
                 detected = client.detected_transport or row["transport"]
+                server_name = client.server_name
+                server_instructions = client.server_instructions
             patch = {
                 "status": constants.MCP_CONNECTED,
                 "status_detail": None,
@@ -127,6 +130,11 @@ class MCPServerService:
                     for t in tools
                 ],
             }
+            # Adopt the server's self-reported identity (discovered on connect).
+            if server_name:
+                patch["name"] = server_name
+            if server_instructions and server_instructions.strip():
+                patch["description"] = server_instructions.strip()[:500]
         except Exception as exc:  # noqa: BLE001
             logger.warning("mcp_test_failed", server=row["id"], error=str(exc))
             patch = {
@@ -168,10 +176,13 @@ class MCPServerService:
             if body.auth_type == constants.MCP_AUTH_OAUTH
             else constants.MCP_DISCONNECTED
         )
+        # Name/description are discovered from the server on first connect;
+        # until then use a placeholder derived from the URL host.
+        placeholder_name = urlparse(body.url).hostname or body.url
         row = await self.repo.create({
             "user_id": user_id,
-            "name": body.name,
-            "description": body.description,
+            "name": placeholder_name,
+            "description": None,
             "url": body.url,
             "transport": "auto",
             "auth_type": body.auth_type,

@@ -24,9 +24,9 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if not tool:
             return f"Error: Tool '{name}' not found"
-        # `task_name`/`task_summary` are display-only args injected into every
-        # tool schema — drop them so they never reach a tool's `execute` (and,
-        # for MCP tools, are never forwarded to the remote server).
+        # `task_summary` is a display-only arg injected into every tool schema
+        # — drop it so it never reaches a tool's `execute` (and, for MCP tools,
+        # is never forwarded to the remote server).
         for arg in TASK_ARG_NAMES:
             kwargs.pop(arg, None)
         return await tool.execute(**kwargs)

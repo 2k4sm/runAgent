@@ -51,6 +51,9 @@ class MCPClient:
         self.headers = headers or {}
         self.transport = transport
         self.detected_transport: str | None = None
+        # Server identity from the `initialize` handshake (set in __aenter__).
+        self.server_name: str | None = None
+        self.server_instructions: str | None = None
         self._stack: AsyncExitStack | None = None
         self._session: ClientSession | None = None
 
@@ -65,10 +68,17 @@ class MCPClient:
             stack = AsyncExitStack()
             try:
                 session = await self._connect(stack, transport)
-                await session.initialize()
+                init = await session.initialize()
                 self._stack = stack
                 self._session = session
                 self.detected_transport = transport
+                # Capture the server's self-reported identity.
+                info = getattr(init, "serverInfo", None)
+                if info is not None:
+                    self.server_name = getattr(info, "title", None) or getattr(
+                        info, "name", None
+                    )
+                self.server_instructions = getattr(init, "instructions", None)
                 return self
             except Exception as exc:  # noqa: BLE001
                 last_error = exc

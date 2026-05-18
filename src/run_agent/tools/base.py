@@ -4,22 +4,16 @@ import copy
 from abc import ABC, abstractmethod
 from typing import Any
 
-# Display-only arguments injected into every tool's schema. The model fills
-# them in when it calls a tool so the UI can show what is being done without
+# Display-only argument injected into every tool's schema. The model fills it
+# in when it calls a tool so the UI can show what is being done without
 # scraping the real arguments. Stripped before execution by the registry.
 TASK_ARG_PROPERTIES: dict[str, Any] = {
-    "task_name": {
-        "type": "string",
-        "description": (
-            "A short imperative label for this action, e.g. 'Web search' or "
-            "'Create PDF'. Shown in the UI as the tool-call heading."
-        ),
-    },
     "task_summary": {
         "type": "string",
         "description": (
             "A concise one-line summary of what this specific call does, e.g. "
-            "'Search for the best pizza in NYC'. Shown in the UI."
+            "'Search for the best pizza in NYC'. Shown in the UI as the "
+            "tool-call heading."
         ),
     },
 }
@@ -52,9 +46,9 @@ class BaseTool(ABC):
     def to_openai_tool(self) -> dict[str, Any]:
         """Convert to OpenAI function-calling format.
 
-        Every tool's schema gains the display-only `task_name`/`task_summary`
-        arguments (see `TASK_ARG_PROPERTIES`) so the model states what it is
-        doing on each call. They are stripped before execution.
+        Every tool's schema gains the display-only `task_summary` argument
+        (see `TASK_ARG_PROPERTIES`) so the model states what it is doing on
+        each call. It is stripped before execution.
         """
         schema = copy.deepcopy(self.parameters_schema())
         properties = schema.setdefault("properties", {})
