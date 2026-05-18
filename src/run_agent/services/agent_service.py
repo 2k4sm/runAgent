@@ -14,6 +14,7 @@ from run_agent.config.logging import get_logger
 from run_agent.schemas.sse import SSEEvent
 from run_agent.services.mcp_service import MCPServerService
 from run_agent.services.run_service import RunService
+from run_agent.utils.errors import friendly_error_message
 
 logger = get_logger(__name__)
 
@@ -256,11 +257,13 @@ class AgentService:
         except Exception as exc:  # noqa: BLE001
             logger.error("agent_execution_failed", run_id=run_id, error=str(exc))
             flush_text()  # persist any text streamed before the failure
+            # Surface a clear, cause-specific message to the user; the raw
+            # error is still logged above and stored on the run for debugging.
             for event in (
                 SSEEvent(
                     type="error",
                     agent=final_agent,
-                    content="The agent encountered an error and could not complete.",
+                    content=friendly_error_message(exc),
                 ),
                 SSEEvent(type="done", agent=final_agent),
             ):

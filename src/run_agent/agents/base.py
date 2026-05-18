@@ -7,6 +7,7 @@ emitted to the client as they arrive, and the full response — including
 `litellm.stream_chunk_builder`, so tool-call detection stays reliable.
 """
 
+import asyncio
 import json
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
@@ -21,6 +22,9 @@ from run_agent.tools.registry import ToolRegistry
 from run_agent.utils.litellm_client import stream_llm
 
 logger = get_logger(__name__)
+
+# Queue marker signalling one concurrent tool call has finished streaming.
+_TOOL_DONE = object()
 
 
 class BaseAgent(ABC):
@@ -104,9 +108,11 @@ class BaseAgent(ABC):
                 if not delta:
                     continue
                 # Reasoning tokens stream alongside content; LiteLLM
-                # standardizes them on `delta.reasoning_content`.
+                # standardizes them on `delta.reasoning_content`. Only surface
+                # them when the user enabled reasoning — some models (e.g.
+                # Gemma) emit reasoning regardless of what we request.
                 reasoning = getattr(delta, "reasoning_content", None)
-                if reasoning:
+                if reasoning and reasoning_effort:
                     yield SSEEvent(
                         type="reasoning", agent=self.name, content=reasoning
                     )
@@ -136,27 +142,43 @@ class BaseAgent(ABC):
             # Record the assistant turn (with its tool calls) once.
             conversation.append(_message_to_dict(message))
 
+            # Run every tool call this turn requested concurrently — when the
+            # model emits multiple independent calls they finish in parallel
+            # instead of one-by-one. Each `_handle_tool` generator drains into a
+            # shared queue so their events merge in arrival order; the tool
+            # messages are still appended in the model's original order.
+            results: dict[str, str] = {}
+            errors: list[BaseException] = []
+            queue: asyncio.Queue[Any] = asyncio.Queue()
+            tasks = [
+                asyncio.create_task(
+                    self._drain_tool_call(tc, queue, results, errors, context)
+                )
+                for tc in tool_calls
+            ]
+            try:
+                finished = 0
+                while finished < len(tasks):
+                    item = await queue.get()
+                    if item is _TOOL_DONE:
+                        finished += 1
+                    else:
+                        yield item
+            finally:
+                # On early close (client abort) cancel any still-running calls.
+                for task in tasks:
+                    if not task.done():
+                        task.cancel()
+
+            # A failure in any tool call ends the run (mirrors sequential behavior).
+            if errors:
+                raise errors[0]
+
             for tool_call in tool_calls:
-                tool_name = tool_call.function.name
-                raw_args = tool_call.function.arguments
-                args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
-
-                # `_handle_tool` yields the events for this call; the content of
-                # its final `tool_result` event is what the model sees as the
-                # tool's output. Subclasses (e.g. the supervisor) override it to
-                # run sub-agents and stream their events through here.
-                result = ""
-                async for event in self._handle_tool(
-                    tool_name, args, tool_call.id, context
-                ):
-                    if event.type == "tool_result":
-                        result = event.content or ""
-                    yield event
-
                 conversation.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
-                    "content": result,
+                    "content": results.get(tool_call.id, ""),
                 })
 
         yield SSEEvent(
@@ -199,8 +221,40 @@ class BaseAgent(ABC):
             type="tool_result",
             agent=self.name,
             content=result,
-            metadata={"tool_name": tool_name},
+            metadata={"tool_name": tool_name, "tool_call_id": tool_call_id},
         )
+
+    async def _drain_tool_call(
+        self,
+        tool_call: Any,
+        queue: "asyncio.Queue[Any]",
+        results: dict[str, str],
+        errors: list[BaseException],
+        context: dict[str, Any] | None,
+    ) -> None:
+        """Run one tool call, pushing its events onto the shared queue.
+
+        Records the `tool_result` content in `results` (keyed by call id) and
+        any failure in `errors`; always ends with the `_TOOL_DONE` marker so
+        the merging loop in `run()` knows this call is finished.
+        """
+        try:
+            raw_args = tool_call.function.arguments
+            args = (
+                json.loads(raw_args)
+                if isinstance(raw_args, str)
+                else (raw_args or {})
+            )
+            async for event in self._handle_tool(
+                tool_call.function.name, args, tool_call.id, context
+            ):
+                if event.type == "tool_result":
+                    results[tool_call.id] = event.content or ""
+                await queue.put(event)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+        finally:
+            await queue.put(_TOOL_DONE)
 
 
 def _accumulate_usage(context: dict[str, Any] | None, response: Any) -> None:

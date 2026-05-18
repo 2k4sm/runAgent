@@ -105,28 +105,36 @@ _MCP_AGENT_TOOL: dict[str, Any] = {
     "function": {
         "name": "mcp_agent",
         "description": (
-            "Delegate to a dynamically-built MCP agent that uses tools from the "
-            "user's connected MCP servers. Use this when the request needs an "
-            "external integration available via a connected MCP server (see the "
-            "'Connected MCP servers' list in your instructions)."
+            "Delegate to a specialized agent for ONE connected MCP server, "
+            "loaded only with that server's tools. Use it when the request "
+            "needs an external integration a connected MCP server provides "
+            "(see the 'Connected MCP servers' list in your instructions). Call "
+            "it once per server the request needs — never bundle servers."
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "task": {
                     "type": "string",
-                    "description": "A specific, self-contained task for the MCP agent.",
+                    "description": "A specific, self-contained task for this server's agent.",
                 },
-                "server_ids": {
-                    "type": "array",
-                    "items": {"type": "string"},
+                "server_id": {
+                    "type": "string",
                     "description": (
-                        "The id(s) of the connected MCP server(s) whose tools "
-                        "are needed for this task."
+                        "The id of the single connected MCP server whose tools "
+                        "this task needs."
+                    ),
+                },
+                "context": {
+                    "type": "string",
+                    "description": (
+                        "Relevant background from the conversation — prior "
+                        "agent findings, user constraints, attached-file notes "
+                        "— that the agent needs. Pass an empty string if none."
                     ),
                 },
             },
-            "required": ["task", "server_ids"],
+            "required": ["task", "server_id", "context"],
         },
     },
 }
@@ -235,23 +243,34 @@ class SupervisorAgent(BaseAgent):
         args: dict[str, Any],
         context: dict[str, Any] | None,
     ) -> AsyncGenerator[SSEEvent, None]:
-        """Build an MCP agent for the requested servers and run it."""
+        """Build a specialized agent for one MCP server and run it."""
         task = str(args.get("task") or "")
-        server_ids = [str(s) for s in (args.get("server_ids") or [])]
+        extra = str(args.get("context") or "")
+        server_id = str(args.get("server_id") or "")
         user_id = str((context or {}).get("user_id") or "")
+
+        # The catalog entry grounds the agent's system prompt; fall back to a
+        # bare id so a stale/missing entry still produces a usable agent.
+        server = next(
+            (s for s in self._mcp_catalog if str(s.get("id")) == server_id), None
+        ) or {"id": server_id, "name": server_id}
 
         yield SSEEvent(
             type="handoff",
             agent=AGENT_SUPERVISOR,
-            content="Delegating to MCP agent",
-            metadata={"target_agent": AGENT_MCP, "task": task},
+            content=f"Delegating to {server.get('name') or 'MCP'} agent",
+            metadata={
+                "target_agent": AGENT_MCP,
+                "task": task,
+                "server_name": server.get("name"),
+            },
         )
 
-        if not server_ids:
-            yield _error_result(tool_name, "No MCP server ids were provided.")
+        if not server_id:
+            yield _error_result(tool_name, "No MCP server id was provided.")
             return
 
-        async with open_mcp_tools(server_ids, user_id) as (registry, summaries, errors):
+        async with open_mcp_tools(server_id, user_id) as (registry, errors):
             if not registry.get_schemas():
                 detail = "; ".join(errors) or "no tools were available"
                 yield _error_result(
@@ -259,7 +278,9 @@ class SupervisorAgent(BaseAgent):
                 )
                 return
             instruction = f"Task from supervisor: {task}"
-            agent = MCPAgent(registry, summaries)
+            if extra.strip():
+                instruction += f"\n\nContext:\n{extra}"
+            agent = MCPAgent(registry, server)
             async for event in self._relay_worker(
                 agent, AGENT_MCP, instruction, tool_name, context
             ):

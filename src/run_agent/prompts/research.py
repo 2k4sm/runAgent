@@ -16,6 +16,7 @@ Repeat until you can answer comprehensively, then stop and write the answer.
 - Read the attached files and conversation context first — the answer may already be partly there, or they may define the scope.
 - Always search before stating current events, statistics, prices, or facts you are not certain of.
 - Cross-reference multiple sources; use `web_fetch` to read a promising result in full.
+- When several searches or fetches are independent of each other, request them together in one step so they run in parallel — it is faster.
 - Cite sources inline with their URLs.
 - Be efficient — stop once you have enough; don't loop on diminishing returns.
 
