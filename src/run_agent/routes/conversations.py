@@ -45,6 +45,18 @@ async def list_runs(
     return await RunService().run_repo.list_for_conversation(conversation_id)
 
 
+@router.delete("/{conversation_id}/runs/{run_id}")
+async def delete_run(
+    conversation_id: str,
+    run_id: str,
+    user: CurrentUser = Depends(get_current_user),
+) -> dict[str, str]:
+    """Delete a single run — used to discard a failed run before retrying it."""
+    await ConversationService().get(conversation_id, user.id)  # ownership check
+    await RunService().delete(run_id, user.id)
+    return {"status": "deleted"}
+
+
 @router.delete("/{conversation_id}")
 async def delete_conversation(
     conversation_id: str,

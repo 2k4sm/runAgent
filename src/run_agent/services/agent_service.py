@@ -264,6 +264,7 @@ class AgentService:
                     type="error",
                     agent=final_agent,
                     content=friendly_error_message(exc),
+                    metadata={"run_id": run_id},
                 ),
                 SSEEvent(type="done", agent=final_agent),
             ):

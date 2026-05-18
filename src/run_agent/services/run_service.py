@@ -57,6 +57,13 @@ class RunService:
             "completed_at": datetime.now(UTC).isoformat(),
         })
 
+    async def delete(self, run_id: str, user_id: str) -> None:
+        """Delete a run the user owns (used to discard a failed run on retry)."""
+        run = await self.run_repo.get_by_id_and_user(run_id, user_id)
+        if not run:
+            raise ValueError(f"Run {run_id} not found")
+        await self.run_repo.delete(run_id)
+
     async def token_totals(self, conversation_id: str) -> dict[str, int]:
         """Sum token usage across every run in the conversation."""
         runs = await self.run_repo.list_for_conversation(conversation_id)
