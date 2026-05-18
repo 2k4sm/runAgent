@@ -176,8 +176,7 @@ class MCPServerService:
             if body.auth_type == constants.MCP_AUTH_OAUTH
             else constants.MCP_DISCONNECTED
         )
-        # Name/description are discovered from the server on first connect;
-        # until then use a placeholder derived from the URL host.
+        # Placeholder name until the server reports its own on first connect.
         placeholder_name = urlparse(body.url).hostname or body.url
         row = await self.repo.create({
             "user_id": user_id,

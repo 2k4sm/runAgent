@@ -29,8 +29,7 @@ class MCPTool(BaseTool):
         self.description = (
             tool_def.get("description") or f"MCP tool '{self._original_name}'"
         )
-        # Live favicon URL for the owning MCP server, surfaced in the
-        # `tool_call` event so the UI shows the real service icon.
+        # Live favicon URL for the owning MCP server, surfaced in `tool_call` events.
         self.icon_url = icon_url
         self._schema: dict[str, Any] = tool_def.get("input_schema") or {
             "type": "object",

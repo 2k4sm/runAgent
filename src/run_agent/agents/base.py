@@ -188,8 +188,7 @@ class BaseAgent(ABC):
             "tool_args": args,
             "tool_call_id": tool_call_id,
         }
-        # MCP tools carry their server's favicon; surface it so the UI can
-        # show the real service icon for this tool call.
+        # MCP tools carry their server's favicon; surface it for the UI.
         tool = self.tool_registry.get(tool_name) if self.tool_registry else None
         icon_url = getattr(tool, "icon_url", None)
         if icon_url:

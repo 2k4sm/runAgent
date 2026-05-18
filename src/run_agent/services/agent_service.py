@@ -194,10 +194,8 @@ class AgentService:
                     )))
                 answer = "".join(buf_chunks)
                 if answer:
-                    # Worker-agent text is intermediate output — persist it as
-                    # an `agent_response` event so the client renders it inside
-                    # a collapsible block. Only the supervisor's text is the
-                    # run's final assistant message.
+                    # Only the supervisor's text is the final assistant message;
+                    # worker text is persisted as a collapsible `agent_response`.
                     if buf_agent == constants.AGENT_SUPERVISOR:
                         timeline.append({
                             "kind": "message",
