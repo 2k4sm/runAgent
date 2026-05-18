@@ -13,6 +13,9 @@ class ChatMessageIn(BaseModel):
     conversation_id: str
     attachment_ids: list[str] = []
     reasoning: bool = False
+    # IANA timezone name from the client (e.g. "America/New_York"); used to
+    # give every agent the user's current local date and time. None → UTC.
+    timezone: str | None = None
 
 
 class RunOut(BaseModel):

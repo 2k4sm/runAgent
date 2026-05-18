@@ -46,6 +46,18 @@ class BaseAgent(ABC):
         """Return the agent's system prompt."""
         ...
 
+    def _compose_system_prompt(self, context: dict[str, Any] | None) -> str:
+        """Return the system prompt with shared run context appended.
+
+        Currently this folds in the user's current date/time (set once per run
+        in AgentService) so every agent reasons about 'now' consistently.
+        """
+        prompt = self.get_system_prompt()
+        time_context = (context or {}).get("time_context")
+        if time_context:
+            prompt = f"{prompt}\n\n{time_context}"
+        return prompt
+
     def get_tools(self) -> list[dict[str, Any]]:
         """Return OpenAI-format tool schemas available to this agent."""
         return self.tool_registry.get_schemas() if self.tool_registry else []
@@ -85,7 +97,7 @@ class BaseAgent(ABC):
     ) -> AsyncGenerator[SSEEvent, None]:
         """Execute the ReAct loop, yielding SSE events."""
         conversation: list[dict[str, Any]] = [
-            {"role": "system", "content": self.get_system_prompt()},
+            {"role": "system", "content": self._compose_system_prompt(context)},
             *messages,
         ]
         tools = self.get_tools()

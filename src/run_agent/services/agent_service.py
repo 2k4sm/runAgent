@@ -5,6 +5,7 @@ import io
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -81,6 +82,38 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def build_time_context(timezone: str | None) -> str:
+    """Build a system-prompt block stating the user's current local date/time.
+
+    `timezone` is an IANA name from the client (e.g. "Europe/London"). An
+    unknown or missing value falls back to UTC so a run never fails over it.
+    """
+    tz = None
+    if timezone:
+        try:
+            tz = ZoneInfo(timezone)
+        except (ZoneInfoNotFoundError, ValueError):
+            logger.warning("invalid_timezone", timezone=timezone)
+    label = timezone if tz else "UTC"
+    now = datetime.now(tz or UTC)
+    # Both the named zone and its UTC offset (e.g. "Asia/Kolkata, UTC+05:30")
+    # so the agent has unambiguous timezone context, not just a wall-clock time.
+    abbrev = now.strftime("%Z")
+    offset = now.strftime("%z")
+    offset_fmt = f"{offset[:3]}:{offset[3:]}" if offset else "+00:00"
+    tz_detail = f"{label}, UTC{offset_fmt}" + (f", {abbrev}" if abbrev else "")
+    return (
+        "## Current date and time\n"
+        f"The user's current local date and time is "
+        f"{now.strftime('%A, %B %d, %Y, %I:%M %p')}.\n"
+        f"The user's timezone is {tz_detail}.\n"
+        "Treat this date/time as the present moment for any time-relative "
+        "reasoning — e.g. 'today', 'tomorrow', 'this week', 'latest', or "
+        "'recent' — and use the timezone when a tool or document needs the "
+        "current date, or when converting or comparing times."
+    )
+
+
 def _attachment_entry(asset: dict[str, Any]) -> dict[str, Any]:
     """Trim an asset dict to the fields the UI needs to render a chip."""
     return {
@@ -116,6 +149,7 @@ class AgentService:
         content: str,
         attachments: list[dict[str, Any]] | None = None,
         reasoning: bool = False,
+        timezone: str | None = None,
     ) -> AsyncGenerator[SSEEvent, None]:
         """Run the supervisor pipeline, streaming SSE events and persisting state.
 
@@ -131,6 +165,9 @@ class AgentService:
             "user_id": user_id,
             "conversation_id": conversation_id,
             "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            # Appended to every agent's system prompt so the whole pipeline
+            # (supervisor + workers + MCP agent) shares the user's current time.
+            "time_context": build_time_context(timezone),
         }
         # When enabled, every agent passes this effort to the LLM call and
         # streams the model's reasoning tokens back as `reasoning` events.

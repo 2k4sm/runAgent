@@ -53,6 +53,7 @@ async def send_message(
             content=body.content,
             attachments=attachment_records,
             reasoning=body.reasoning,
+            timezone=body.timezone,
         ):
             yield StreamService.format(event)
 
