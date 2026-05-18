@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     max_react_iterations: int = 10
     max_tool_retries: int = 2
 
+    # MCP
+    # Backend's externally reachable URL — used to build the OAuth redirect URI.
+    public_base_url: str = "http://localhost:8000"
+    # Fernet key encrypting MCP server secrets (headers, OAuth tokens) at rest.
+    mcp_encryption_key: str = ""
+
 
 # Fields are populated from the environment / .env at runtime.
 settings = Settings()  # type: ignore[call-arg]  # ty: ignore[missing-argument]

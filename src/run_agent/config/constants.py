@@ -19,6 +19,18 @@ SOURCE_GENERATED = "generated"
 AGENT_SUPERVISOR = "supervisor"
 AGENT_RESEARCH = "research"
 AGENT_DOCUMENT = "document"
+AGENT_MCP = "mcp"
+
+# MCP server connection status
+MCP_DISCONNECTED = "disconnected"
+MCP_CONNECTED = "connected"
+MCP_NEEDS_AUTH = "needs_auth"
+MCP_ERROR = "error"
+
+# MCP auth types
+MCP_AUTH_NONE = "none"
+MCP_AUTH_HEADER = "header"
+MCP_AUTH_OAUTH = "oauth"
 
 # MIME types for generated documents
 MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

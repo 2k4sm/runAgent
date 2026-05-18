@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from run_agent.config.logging import configure_logging, get_logger
 from run_agent.config.settings import settings
 from run_agent.middlewares.error_handler import register_exception_handlers
-from run_agent.routes import auth, chat, conversations, files, health
+from run_agent.routes import auth, chat, conversations, files, health, mcp
 
 logger = get_logger(__name__)
 
@@ -49,6 +49,7 @@ def create_app() -> FastAPI:
         tags=["conversations"],
     )
     app.include_router(files.router, prefix=f"{settings.api_prefix}/files", tags=["files"])
+    app.include_router(mcp.router, prefix=f"{settings.api_prefix}/mcp", tags=["mcp"])
 
     return app
 

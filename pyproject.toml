@@ -21,6 +21,10 @@ dependencies = [
     "tavily-python>=0.5.0",
     "httpx>=0.27.0",
 
+    # MCP client (connect to external MCP servers)
+    "mcp>=1.9.0",
+    "cryptography>=43.0.0",
+
     # Agent tools — document creation
     "python-docx>=1.1.0",
     "openpyxl>=3.1.0",

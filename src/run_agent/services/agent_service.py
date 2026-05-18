@@ -12,6 +12,7 @@ from run_agent.agents.supervisor import SupervisorAgent
 from run_agent.config import constants
 from run_agent.config.logging import get_logger
 from run_agent.schemas.sse import SSEEvent
+from run_agent.services.mcp_service import MCPServerService
 from run_agent.services.run_service import RunService
 
 logger = get_logger(__name__)
@@ -134,6 +135,23 @@ class AgentService:
         # streams the model's reasoning tokens back as `reasoning` events.
         if reasoning:
             context["reasoning_effort"] = "medium"
+
+        # Offer the user's connected MCP servers to the supervisor so it can
+        # delegate to the dynamic MCP agent. Absent → the feature is invisible.
+        try:
+            mcp_rows = await MCPServerService().list_active_rows(user_id)
+            if mcp_rows:
+                context["mcp_servers"] = [
+                    {
+                        "id": row["id"],
+                        "name": row["name"],
+                        "description": row.get("description"),
+                        "tools": row.get("tools_cache") or [],
+                    }
+                    for row in mcp_rows
+                ]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("mcp_catalog_load_failed", error=str(exc))
 
         # Read prior turns BEFORE persisting this run's timeline, otherwise the
         # current message would appear twice in the LLM context.
